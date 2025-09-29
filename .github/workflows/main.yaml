@@ -4,7 +4,11 @@ on:
   [push]
 
 jobs:
-  hello-world:
+  build-app:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Hello world!"
+      - run: echo "Hello, world!"
+      - name: Setup Gradle
+        uses: gradle/action/setup-gradle@v2
+      - name: Build with Gradle
+        run: ./gradlew build
