@@ -27,7 +27,7 @@ platform :android do
       gradle(task: "clean build")
 
       upload_to_testappio(
-        api_token: ENV["API_TOKEN"],
+        api_token: ENV["TOKENCICD"],
         app_id: ENV["APP_ID"],
         apk: "../app/build/outputs/apk/debug/app-debug.apk",
         release_notes: "My release note here...",
