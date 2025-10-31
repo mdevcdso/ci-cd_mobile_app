@@ -24,12 +24,12 @@ platform :android do
   desc "Deploy app to test environnement - Testapp.io"
   lane :deploy_testapp do
       increment_version_code
-      gradle(task: "clean assembleRelease")
+      gradle(task: "clean build")
 
       upload_to_testappio(
         api_token: ENV["API_TOKEN"],
         app_id: ENV["APP_ID"],
-        apk: "app/build/outputs/apk/release/app-release.apk",
+        apk: "../app/build/outputs/apk/debug/app-debug.apk",
         release_notes: "My release note here...",
         git_release_notes: true,
         git_commit_idea: false,
