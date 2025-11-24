@@ -26,11 +26,13 @@ platform :android do
       increment_version_code
       gradle(task: "clean build")
 
+      apk_path = lane_context[SharedValues::GRADLE_APK_OUTPUT_PATH]
+
       upload_to_testappio(
         api_token: ENV["TOKENCICD"],
         app_id: ENV["APP_ID"],
-        apk: "../app/build/outputs/apk/debug/app-debug.apk",
-        release_notes: "My release note here...",
+        apk: apk_path,
+        release_notes: "My release note here",
         git_release_notes: true,
         git_commit_idea: false,
         notify: true
