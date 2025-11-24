@@ -34,29 +34,45 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Ecrire un step, qui à partir du context, determine le type de build
-      # Utiliser les context pour determiner la branche github.ref_type
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
+      # Déterminer le type de build + le chemin de l'APK
       - name: Determine build type
         id: build_type
         run: |
-          if [ "${{ github.ref_name }}" == "main" ]; then
-              echo "BUILD_TYPE=Release" >> $GITHUB_OUTPUT
+          echo "Branch: $GITHUB_REF_NAME"
+
+          if [ "$GITHUB_REF_NAME" = "main" ]; then
+            echo "MA_VAR=Release" >> "$GITHUB_OUTPUT"
+            echo "APK_PATH=app/build/outputs/apk/release/app-release-unsigned.apk" >> "$GITHUB_OUTPUT"
           else
-              echo "BUILD_TYPE=Debug" >> $GITHUB_OUTPUT
+            # develop (ou autre) => Debug
+            echo "MA_VAR=Debug" >> "$GITHUB_OUTPUT"
+            echo "APK_PATH=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
           fi
 
-      # echo "MA_VAR=Debug" >> $GITHUB_OUTPUT
-      # echo "MA_VAR=Release" >> $GITHUB_OUTPUT
-
-      # Ce step doit se lancer si le trigger se fait sur la branche develop
-      - name: Build debug
-        # conditionner ce step
+      # Build Debug si branche = develop
+      - name: Build Debug
         if: steps.build_type.outputs.MA_VAR == 'Debug'
         run: ./gradlew assembleDebug
 
-      # Ce step doit se lancer si le trigger se fait sur la branche main
+      # Build Release si branche = main
       - name: Build Release
-        # conditionner ce step
         if: steps.build_type.outputs.MA_VAR == 'Release'
         run: ./gradlew assembleRelease
+
+      # Upload vers TestApp.io
+      - name: Upload APK to TestApp.io
+        uses: testappio/github-action@v5
+        with:
+          api_token: ${{ secrets.TOKENCICD }}   # ton secret TOKENCICD
+          app_id: ${{ secrets.APP_ID }}         # ton secret APP_ID
+          file: ${{ steps.build_type.outputs.APK_PATH }}
+          release_notes: "CI build from ${{ github.ref_name }}"
+          git_release_notes: true
+          include_git_commit_id: true
+          notify: true
