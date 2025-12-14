@@ -21,22 +21,77 @@ platform :android do
     gradle(task: "test")
   end
 
+  desc "Build debug APK"
+  lane :build_debug do
+    gradle(task: "assembleDebug")
+  end
+
+  desc "Build release APK (non signé pour tests CI)"
+  lane :build_release do
+    gradle(task: "assembleRelease")
+  end
+
+  #desc "Build release APK"
+  #lane :build_release do
+   #   gradle(
+   #     task: "assembleRelease",
+   #     properties: {
+   #       "android.injected.signing.store.file" => ENV["ANDROID_KEYSTORE_PATH"],
+   #       "android.injected.signing.store.password" => ENV["ANDROID_KEYSTORE_PASSWORD"],
+   #       "android.injected.signing.key.alias" => ENV["ANDROID_KEY_ALIAS"],
+   #       "android.injected.signing.key.password" => ENV["ANDROID_KEY_PASSWORD"]
+   #     }
+   #   )
+  #end
+
+  desc "Generate changelog from git commits"
+  private_lane :generate_changelog do
+      changelog = changelog_from_git_commits(
+        commits_count: 50,
+        pretty: "- %s"
+      )
+      UI.message("Changelog:\n#{changelog}")
+      return changelog
+  end
+
   desc "Deploy app to test environnement - Testapp.io"
   lane :deploy_testapp do
       increment_version_code
-      gradle(task: "clean build")
+      build_release
 
       apk_path = lane_context[SharedValues::GRADLE_APK_OUTPUT_PATH]
+      changelog = generate_changelog
 
       upload_to_testappio(
-        api_token: ENV["TOKENCICD"],
-        app_id: ENV["APP_ID"],
+        api_token: ENV["TESTAPP_TOKEN"],
+        app_id: ENV["TESTAPP_ID"],
         apk: apk_path,
-        release_notes: "My release note here",
+        release_notes: changelog,
         git_release_notes: true,
         git_commit_idea: false,
         notify: true
       )
+  end
+
+  desc "Deploy to Google Play Internal track"
+  lane :deploy_play_internal do
+      build_release
+
+      aab_path = lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH] || "app/build/outputs/bundle/release/app-release.aab"
+      changelog = generate_changelog
+
+      upload_to_play_store(
+        json_key: ENV["GOOGLE_PLAY_JSON_KEY"] || File.absolute_path("fastlane/ci-cd-examen-f8435490d323.json"),
+        package_name: "com.example.ci_app_mobile",
+        track: "internal",
+        aab: aab_path,
+        skip_upload_screenshots: true,
+        skip_upload_images: true,
+        release_status: "draft",
+        changelog: {
+          "fr-FR" => changelog
+        }
+    )
   end
 
 end

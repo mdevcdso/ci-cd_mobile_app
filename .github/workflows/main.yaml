@@ -1,15 +1,16 @@
-name: Build & upload APK to TestApp.io
+name: Main Workflow
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-      - develop
+    tags:
+      - 'v*'
+      - 'rc-*'
 
 jobs:
   unit_test:
-    name: Run Unit Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -22,8 +23,13 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Run Unit Tests
-        run: ./gradlew test
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Run tests via Fastlane
+        run: bundle exec fastlane android test
 
   build:
     name: Build and upload to TestApp.io
@@ -32,7 +38,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -40,39 +46,68 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # Déterminer le type de build + le chemin de l'APK
-      - name: Determine build type
-        id: build_type
-        run: |
-          echo "Branch: $GITHUB_REF_NAME"
-
-          if [ "$GITHUB_REF_NAME" = "main" ]; then
-            echo "MA_VAR=Release" >> "$GITHUB_OUTPUT"
-            echo "APK_PATH=app/build/outputs/apk/release/app-release-unsigned.apk" >> "$GITHUB_OUTPUT"
-          else
-            # develop (ou autre) => Debug
-            echo "MA_VAR=Debug" >> "$GITHUB_OUTPUT"
-            echo "APK_PATH=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
-          fi
-
-      # Build Debug si branche = develop
-      - name: Build Debug
-        if: steps.build_type.outputs.MA_VAR == 'Debug'
-        run: ./gradlew assembleDebug
-
-      # Build Release si branche = main
-      - name: Build Release
-        if: steps.build_type.outputs.MA_VAR == 'Release'
-        run: ./gradlew assembleRelease
-
-      # Upload vers TestApp.io
-      - name: Upload APK to TestApp.io
-        uses: testappio/github-action@v5
+      - uses: ruby/setup-ruby@v1
         with:
-          api_token: ${{ secrets.TOKENCICD }}   # ton secret TOKENCICD
-          app_id: ${{ secrets.APP_ID }}         # ton secret APP_ID
-          file: ${{ steps.build_type.outputs.APK_PATH }}
-          release_notes: "CI build from ${{ github.ref_name }}"
-          git_release_notes: true
-          include_git_commit_id: true
-          notify: true
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Build release via Fastlane
+        if: startsWith(github.ref, 'refs/heads/main')
+        run: bundle exec fastlane android build_release
+
+      - name: Build release for tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: bundle exec fastlane android build_release
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            app/build/outputs/apk/debug/app-debug 2.apk
+            app/build/outputs/mapping/release/mapping.txt
+
+  deploy_testapp:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Deploy RC to Testapp.io
+        if: startsWith(github.ref, 'refs/tags/rc-')
+        env:
+          TESTAPP_TOKEN: ${{ secrets.TESTAPP_TOKEN }}
+          TESTAPP_ID: ${{ secrets.TESTAPP_ID }}
+        run: bundle exec fastlane android deploy_testapp
+
+  deploy_play_internal:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Write Play Store JSON
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: echo "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}" > fastlane/play-service-account.json
+
+      - name: Deploy to Play Internal Track
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GOOGLE_PLAY_JSON_KEY: fastlane/play-service-account.json
+        run: bundle exec fastlane android deploy_play_internal
